@@ -1,0 +1,316 @@
+---
+title: "Final Paper"
+author: "STOR 320.01 Group 15"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+#Put Necessary Libraries Here
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggthemes)
+library(plotly)
+library(ggplot2)
+library(tidyverse)
+library(modelr)
+library(broom)
+library(glmnet)
+library(kableExtra)
+library(scales)
+pass <- read.csv("NFL.csv")
+bears=read.csv("bears.csv")
+rush <- read.csv("NFLRUSH.csv")
+nflstats = merge(rush, pass, by =c("YEAR", "Team"))
+playcall_type = select(nflstats, YEAR, Team, Att.x, Att.y, Win)
+
+
+BalancedTeam <- filter(playcall_type, Att.y/(Att.x+Att.y) <= .55 & Att.y/(Att.x+Att.y) >= .5) %>% transform("Play_Type" = "Balanced", "Pass_Percent" = Att.x/(Att.x+Att.y))
+UnbalancedRun <- filter(playcall_type, Att.y/(Att.x+Att.y) < .5) %>% transform("Play_Type" = "Run-Heavy", "Pass_Percent" = Att.x/(Att.x+Att.y))
+UnbalancedPass <- filter(playcall_type, Att.y/(Att.x+Att.y) > .55) %>% transform("Play_Type" = "Pass-Heavy", "Pass_Percent" = Att.x/(Att.x+Att.y))
+playcall_type2 = full_join(BalancedTeam, UnbalancedRun) %>% full_join(UnbalancedPass)
+nflstats = left_join(nflstats, playcall_type2)
+```
+
+# INTRODUCTION
+
+For our project we examined NFL team rushing and passing stats from 2002 to 2017. While our initial round of questions was broad, our final two questions we chose to pursue for the exploratory data analysis focus on how teams differentiate themselves. Our first question divides teams into four tiers based on win totals and poses the thought: Which statistical categories are most closely correlated to which tier a team will fall into? After finding the statistics that are most closely related to a team's tier, we attempted to develop a model that will predict a team's win total for the following season given their tier from that season. Information uncovered by this question could be useful to many different groups of people involved in football fandom. Sports bettors can use our information about predictive statistics to determine which teams are the best bets to win many games and make the playoffs next season. They will be able to identify key predictors that correlate strongly to team success. We hope that our results will be useful to those outside of the sport who wish to gain insight into the inner workings and statistical trends that exist in today's NFL.
+
+It is common knowledge that the NFL has transitioned to feature more pass-heavy offensive attacks. Our second question explores the differences in success of teams that feature a new school pass-heavy offense, an old school run-heavy offense, or a balanced offense. We ask: Do teams that are run- or pass-heavy win more games than teams with balanced offensive attacks? By dividing each team into one of these categories, we were able to determine not only which group generally won more games but which statistic, rushing or passing attempts, is the better predictor of a team's win total. Answering this question could provide insight into whether or not teams that have transitioned into the popular pass-heavy system have made a smart decision. This data can be used by both teams wishing to grade their performance or play style and by football fans. Fantasy football players can decide which teams they want to have players on given our analysis of how offensive schemes affect team success. 
+
+
+# DATA
+
+The data considered in this analysis is based on statistics from the NFL. Two separate datasets were used to answer the proposed research questions. One data set displays the rushing statistics while the other displays passing statistics. These datasets were obtained from [Kaggle.com](https://www.kaggle.com/) from a dataset owner by the name of Farzad Yousefi. Both datasets were verified using [pro-football-reference.com](https://www.pro-football-reference.com/). 
+
+The first dataset provides information on the yearly rushing statistics for teams in the NFL. There are 512 entries in this data set and 32 different teams are listed. Each entry represents a team during a given year spanning from 2002 to 2017. The first two columns in the data set are "YEAR" and "Team". These two variables together are primary keys that uniquely identify each entry in the dataset. The "YEAR" variable represents the year between 2002 and 2017 and the "Team" variable gives a character abbreviation for each team. The variable "Ratt" represents rushing attempts made by a team.  The variable "RYds" represents how many rushing yards a team had in a given year. The variable "RAvg" represents average rushing yards per attempt. The variable "RYds/G" represents the average rushing yards per game. The variable "RTD" represents the number of touchdowns scored on a rushing play by a team in a given year. The variable "Big" represents the longest run made by a team during the season. The variable "Fum" represents the total number of fumbles a team had while the variable "FumL" represents the number of those fumbles that were lost. The variable "Stuff" represents the number of runs a team made that were stopped behind the line of scrimage. The variable "Yds" represents the total number of yards lost when rushing plays were stopped behind the line of scrimage. The variable "Wins" represents the number of games won by a team in a given year, while "Loss" represents the number of losses a team underwent in a given year. Finally, the variable "Tie" represents the number of games in which a specific team tied with another team in a given year. The following table displays the first six entries of this dataset. 
+
+```{r, echo=FALSE}
+Rushing2 = rush %>% 
+  select(-GP)
+kable(head(Rushing2)) %>%
+  kable_styling()
+```
+The second dataset is similar to the first, but it provides information on passing statistics in the NFL instead of rushing statistics. Just as in the first dataset, there are 512 entries in this data set and 32 teams are represented. Each entry in this data set represents an NFL team between the years of 2002 and 2017. The variables "YEAR" and "Team" together are primary keys for this dataset. The variable "Comp" represents how many passes were completed over the given season. The variable "Att" represents the total number of passing attempts a team made. The variable "Yds" represents the total yards gained attributed to passing plays. The variable "Avg" represents the average amount of passing yards obtained per attempt. The variable "Yds/G" represents the average passing yards per game for a team in a given year. The variable "TD" represents the number of touchdowns scored by a team in a given year that can be attributed to a passing play. The variable "Int" represents the number of interceptions thrown by team in a given year. The variable "QBR" represents the weighted average quarterback rate for all starting quarterbacks on a team in a given year. The final variable is "Lng", which represents the longest pass made by a team during the season. The table displayed below shows the first six entries in this dataset. 
+
+```{r, echo=FALSE}
+Passing2 = select(pass, -GP, -Pct)
+
+kable(head(Passing2)) %>%
+  kable_styling()
+```
+Both of these datasets provide valuable insight into the performance of teams in the NFL. These datasets are utilized separately to analyze the effects of passing and rushing plays on team success. These sets can also be used in unison to further analyze passing and rushing together and how they affect team success. The following plots display the correlation between passing yards and touchdowns and rushing yards and touchdowns. The correlation between touchdowns and these two variables are very different, leading us to further explore exactly which variables affect team success the most. 
+
+```{r, echo=FALSE}
+ggplot(pass) +
+  geom_point(aes(x=Yds, y=TD), col = "black") +
+  geom_smooth(aes(x = Yds, y = TD), method = "lm", col = "red") +
+  xlab("Passing Yards") +
+  ylab("Touchdowns")
+
+ggplot(rush) +
+  geom_point(aes(x=Yds, y=TD)) +
+  geom_smooth(aes(x = Yds, y = TD), method = "lm", col = "red") +
+  xlab("Rushing Yards") +
+  ylab("Touchdowns")
+```
+
+
+# RESULTS
+
+```{r, include=FALSE}
+pass["Years"] <- cut(pass$YEAR, breaks=c(2000,2005,2009,2013,2018), labels=c("2002-2005", "2006-2009", "2010-2013", "2014-2017"))
+
+nflstats["Years"] <- cut(nflstats$YEAR, breaks=c(2000,2005,2009,2013,2018), labels=c("2002-2005", "2006-2009", "2010-2013", "2014-2017"))
+```
+```{r, echo=FALSE}
+pass["Category"] <- cut(pass$Win, breaks=c(-1,3,9,12,100), labels=c("3 wins or less", "4 to 8 wins", "9 to 12 wins", "13 to 16 wins"))
+nflstats["Category"] <- cut(nflstats$Win, breaks=c(-1,3,9,12,100), labels=c("3 wins or less", "4 to 8 wins", "9 to 12 wins", "13 to 16 wins"))
+nflstats["Total_Yds"]<-nflstats$Yds.x+nflstats$Yds.y
+nflstats["Total_TDs"]<-nflstats$TD.x+nflstats$TD.y
+nflstats["Turnovers"]<- nflstats$Int+nflstats$FumL
+```
+With the objective to see if there is a direct correlation between offensive production and team results we split each team's season into tiers based on number of wins. The four tiers we created are 3 wins or less, 4 to 8 wins, 9 to 12 wins, and 13 or more wins. We believe these categories result in the best separation for the various stages teams were in during that season, whether that was rebuilding, retooling, or competing for the Lombardi trophy. When looking at these tiers we first wanted to see if there are certain statistical categories that the top teams excel in. This idea leads to the charts below, as they show what football analysts say would make up a conventionally great football team; essentially that the high number of touchdowns while keeping the amounts of turnovers low lead to great teams. The results are very similar to what one would expect when looking at great football teams competing for a championship compared to those who are hoping to have their fortunes changed with the draft.
+
+```{r,echo=FALSE}
+g <- ggplot(nflstats, aes(factor(Years), Total_Yds))
+g + geom_boxplot(aes(fill=factor(Category))) + 
+  scale_fill_manual(values=c("#FB4F14", "#0076B6","#FFB612" , "#D3BC8D"))+
+  theme_minimal() + 
+  labs(title="Total Yards per Season vs Team Wins",
+       subtitle="2002-2017",
+       x="Year",
+       y="Yards per Season",
+       fill="Win Category")
+        
+
+       
+g <- ggplot(nflstats, aes(factor(Years), Turnovers))
+g + geom_boxplot(aes(fill=factor(Category))) + 
+  scale_fill_manual(values=c("#FB4F14", "#0076B6","#FFB612" , "#D3BC8D"))+
+  theme_minimal() + 
+  labs(title="Amount of Turnovers by Number of Wins",
+       subtitle="2002-2017",
+       x="Year",
+       y="Turnovers",
+       fill="Win Category")
+
+g <- ggplot(nflstats, aes(factor(Years), Total_TDs))
+g + geom_boxplot(aes(fill=factor(Category))) + 
+  scale_fill_manual(values=c("#FB4F14", "#0076B6","#FFB612" , "#D3BC8D")) +
+  theme_minimal() + 
+  labs(title="Amount of Touchdowns by Number of Wins",
+       subtitle="2002-2017",
+       x="Year",
+       y="Touchdowns",
+       fill="Win Category")
+```
+
+Wanting to see if it is possible to predict if a team will be elite or at the bottom of the standings, a logistic regression model was made. Since a logistic regression model is the prediction of a binary variable we separated the data with the two categories: 13 wins or more and 3 wins or less. This metric provided the best prediction model based on the offensive data we have in order to predict if a team will be a competitor in the playoffs or having a chance at the first pick of the draft. The regression includes all noteworthy variables of a team's offensive success (i.e. yards, touchdowns, turnovers, etc.) while the weights of the regression coefficients differ for each statistically category. It's important to note that certain categories such as yards will most certainly always be higher than number of touchdowns and, as such, yards' regression coefficient will be less. The two coefficients of note are fumbles lost and interceptions. These two are the only coefficients that carry negative coefficients; meaning as either goes up the chances of being a 13 or more-win team decreases. The regression will output "Yes" if a team's data results in a prediction where the team is expected to win 13 or more games and "No" if it is expected to win 3 or less. In the table below the regression was used on all 72 teams over the 16-year data set that fit into one of these categories, with prediction being in the x-axis row and real results being in the y-axis row.
+```{r, include=FALSE}
+nflstats2<-filter(nflstats, Win <= 3 | Win>=13)
+nflstats2$Category2<- ifelse(nflstats2$Category == "13 to 16 wins",1,0)
+nflstats3<-select(nflstats2, Att.x,Yds.x,TD.x,Big,FumL,Stuff,Comp,Att.y,Pct,Yds.y,TD.y,Int,QBR,Lng, Category2)
+Part=nflstats3
+set.seed(216)
+cvmod.0=cv.glmnet(y=as.factor(Part$Category2),x=as.matrix(Part[,-14]),alpha=0,
+                  family="binomial",type.measure="class")
+set.seed(216)
+cvmod.25=cv.glmnet(y=as.factor(Part$Category2),x=as.matrix(Part[,-14]),alpha=0.25,
+                   family="binomial",type.measure="class")
+set.seed(216)
+cvmod.5=cv.glmnet(y=as.factor(Part$Category2),x=as.matrix(Part[,-14]),alpha=0.5,
+                  family="binomial",type.measure="class")
+set.seed(216)
+cvmod.75=cv.glmnet(y=as.factor(Part$Category2),x=as.matrix(Part[,-14]),alpha=0.75,
+                   family="binomial",type.measure="class")
+set.seed(216)
+cvmod.1=cv.glmnet(y=as.factor(Part$Category2),x=as.matrix(Part[,-14]),alpha=1,
+                  family="binomial",type.measure="class")
+
+CV.0.ERROR=cvmod.0$cvm[which(cvmod.0$lambda==cvmod.0$lambda.1se)]
+CV.25.ERROR=cvmod.25$cvm[which(cvmod.25$lambda==cvmod.25$lambda.1se)]
+CV.5.ERROR=cvmod.5$cvm[which(cvmod.5$lambda==cvmod.5$lambda.1se)]
+CV.75.ERROR=cvmod.75$cvm[which(cvmod.75$lambda==cvmod.75$lambda.1se)]
+CV.1.ERROR=cvmod.1$cvm[which(cvmod.1$lambda==cvmod.1$lambda.1se)]
+
+MOD.RESULT=tibble(alpha=c(0,0.25,0.5,0.75,1),
+                  lambda=c(cvmod.0$lambda.1se,cvmod.25$lambda.1se,
+                           cvmod.5$lambda.1se,cvmod.75$lambda.1se,
+                           cvmod.1$lambda.1se),
+                  CV.Error=c(CV.0.ERROR,CV.25.ERROR,CV.5.ERROR,
+                             CV.75.ERROR,CV.1.ERROR))
+print(MOD.RESULT)
+best.alpha=MOD.RESULT$alpha[which.min(MOD.RESULT$CV.Error)]
+best.lambda=MOD.RESULT$lambda[which.min(MOD.RESULT$CV.Error)]
+
+best.mod=glmnet(y=as.factor(Part$Category2),x=as.matrix(Part[,-1]),
+                nlambda=1,lambda=best.lambda,alpha=best.alpha,
+                family="binomial")
+best.coef=as.matrix(coef(best.mod))
+head(best.coef)
+
+Part$Predict=predict(best.mod,newx=as.matrix(Part[,-1]),type="class")
+Part$Category2=ifelse(Part$Category2==1,"Actually won 13 or more games","Actually won 3 or less games")
+Part$Predict=ifelse(Part$Predict=="1","Predicted to win 13 or more games","Predicted to win 3 or less games")
+
+a<-table(Part[,c("Category2","Predict")])
+```
+```{r, echo=FALSE}
+kable(a,  header=c(" ", "title" = 2)) %>%
+    kable_styling("striped", full_width = F) %>%
+    column_spec(1, bold = T, width = "10em") %>%
+    row_spec(1, bold = T, color = "#c83803", background = "#0b162a") %>%
+    add_header_above(header = c("Predictions vs Real NFL Results"=3))
+                         
+```
+We can see that one team was expected to be in the 3 wins or less category based on their offensive output but were in the elite category when it came to real results. Checking to see which data point this is led us to the **2006 Chicago Bears** as team being the result of this error. To understand why this occurs we investigated if this Bears team was a statistical anomaly when it comes to offensive output and winning games. 
+```{r, echo=FALSE}
+bears["Total_TDs"]<-bears$TD.x+bears$TD.y
+bears["Turnovers"]<- bears$Int+bears$FumL
+bears["Total_TDs"]<-bears$TD.x+bears$TD.y
+tot<-ggplot(bears, aes(x=reorder(Team, -Total_TDs), y=Total_TDs, fill=Team)) +
+    geom_bar(stat="identity") +
+    scale_fill_manual(values=rep(c("#FFB612","#241773","#C83803", "#0076B6","#002C5F","#002244","#A5ACAF", "#0080C6", "#311D00", "#0080C6")), 9)+ 
+    scale_x_discrete(labels = wrap_format(10))+
+    theme(legend.position = "none")+
+    labs(title="Comparing the 2006 Chicago Bears to the Best and Worst Teams of 2006",
+         subtitle="Categorical teams based on averages (2002-2017)",
+         x="Teams",
+         y="Total Touchdowns")
+
+
+totb<-ggplot(bears, aes(x=reorder(Team, -Turnovers), y=Turnovers, fill=Team)) +
+  geom_bar(stat="identity") +
+  scale_fill_manual(values=rep(c("#FFB612","#241773","#C83803", "#0076B6","#002C5F","#002244","#A5ACAF", "#0080C6", "#311D00", "#0080C6")), 9)+
+  scale_x_discrete(labels = wrap_format(10))+
+  theme(legend.position = "none")+
+  labs(title="Comparing the 2006 Chicago Bears to the Best and Worst Teams of 2006",
+         subtitle="Categorical teams based on averages (2002-2017)",
+       x="Teams",
+       y="Amount of Turnovers")
+
+tot
+totb
+```
+
+Looking the plots above, the irregularity of the **2006 Chicago Bears** season is exemplified. In terms of total touchdowns, the Bears were in the middle of the two categories analyzed. Even more interesting is how the Bears turned the ball over more than both categories' averages by a margin of over 2 compared to the worst teams and 13 when compared to teams in its own category. The 2006 Bears team stands on its own in the data set as being able to win games at an elite level while not matching the offensive production or ball control of similar caliber teams. There are a few ways we believe this occurred.  The first comes down to how the NFL schedule works. Playing in one of the weaker divisions allowed the Bears to have the third weakest schedule in the NFL according to [Pro Football Reference](https://www.pro-football-reference.com/years/2006/). Combine this easy schedule with having the second ranked defense in the NFL, based on [Pro Football Reference's defensive ratings](https://www.pro-football-reference.com/years/2006/opp.htm), allowed for a perfect storm for this Bears team ability to win games without fully relying on their offense. This team is the only incorrect prediction over the 16 seasons we made using our regression model, showing that while offensive production is a key component to success it is not the full story.
+
+While our first question focused on classifying teams into tiers based on statistical success, our second question aims to analyze the effectiveness of different offensive strategies in today's NFL. While the NFL has transitioned to a more pass-centric offensive approach, is that really more effective than an old-school run-heavy offensive attack? We examine the distribution of wins for teams divided into three categories: pass-heavy, run-heavy, and balanced. 
+
+My group was curious as to how the effect of play styles impacted wins in the National Football League. To begin, a team that had "balanced play-calling" was a team that did not have more than 55% or less than 50% of total plays be passes. The data set was split into 3 separate tibbels, *UnbalancedRun*, *UnbalancedPass*, and *BalancedTeam*. The data was rejoined into a large data set with new variables called "Play_Type" and "Pass_Percent" to reflect the play-calling style of the team. Pass_Percent is the percentage of passes a team threw throughout the year. After joining the data together, the box-plot seen in the figure below was created to display the distribution of wins between each play-calling type. As seen in the box-plot, the difference between the number of wins is not significant. All of the quarterfinal ranges overlap even though the mean number of wins are slightly different. This discovery lead our group to question whether play-calling would even be a good predictor for wins.
+
+```{r, echo=FALSE}
+ggplot(nflstats) + geom_boxplot(aes(x=Play_Type, y = Win), fill = "#624a2e", color = "white") + xlab("Play Style")+ ylab("Wins") + ggtitle("Play Style vs. Wins in the NFL") + theme(
+  panel.background = element_rect(fill = "#458B00", colour = "white",
+                                size = 2, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                colour = "black"), 
+  panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                colour = "black")
+  )
+```
+
+To test if play-calling was an accurate predictor of wins in the NFL, the data set was randomly split into 8 groups for cross validation. A function was created to train a linear model predicting wins based on passing percentage using the cross validated data. The predicted and actual win values were given to a separate function to predict the root mean squared error of the model. The "percentmod" model had an approximate RMSE value of 2.94. The predictions and residuals from the model were then gathered and plotted against actual wins. The solid black reference lines show a perfect model which is used as a barometer for how accurately the passing percentage model predicts wins. As shown, Pass_Percentage is not a very accurate model for predicting wins. 
+```{r, warning = F, echo = F}
+set.seed(77)
+
+Data = nflstats %>% crossv_kfold(8)
+
+RMSE.func = function(actual, predict){
+  mse = mean((actual - predict)^2, na.rm = T)
+  rmse = sqrt(mse)
+  return(rmse)
+}
+
+train.percentmodel.func = function(data){
+  percentmod = lm(Win~Pass_Percent, data = data)
+  return(percentmod)
+}
+
+train.passmodel.func=function(data){
+  passmod=lm(Win~Comp + Att.y + Yds.y + Avg.y + Yds.G.y + TD.y + Int + QBR + Lng + Pass_Percent, data=data)
+  return(passmod)
+}
+
+train.rushmodel.func=function(data){
+  rushmod=lm(Win~Att.x + Yds.x + Avg.x + Yds.G.x + Att.x + Big + Fum + FumL + Stuff  + Yds.1 + Pass_Percent, data=data)
+  return(rushmod)
+}
+
+
+Data4 = Data %>% mutate(tr.model=map(train, train.percentmodel.func)) 
+Percent_Data = Data4 %>% mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>% select(predict) %>% unnest()
+PERCENT_OUT.RMSE = RMSE.func(actual = Percent_Data$Win, predict = Percent_Data$.fitted);
+
+Data2 = Data %>% mutate(tr.model=map(train, train.passmodel.func)) 
+Pass_Data = Data2 %>% mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>% select(predict) %>% unnest()
+PASS_OUT.RMSE = RMSE.func(actual = Pass_Data$Win, predict = Pass_Data$.fitted);
+
+
+
+Data3 = Data %>% mutate(tr.model=map(train, train.rushmodel.func)) 
+Rush_Data = Data3 %>% mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>% select(predict) %>% unnest()
+RUSH_OUT.RMSE = RMSE.func(actual = Rush_Data$Win, predict = Rush_Data$.fitted);
+
+```
+
+```{r, eval = F, echo = F}
+print(RUSH_OUT.RMSE)
+print(PASS_OUT.RMSE)
+print(PERCENT_OUT.RMSE)
+```
+
+```{r, warning = F, echo = F}
+Percent.Data = nflstats %>% mutate(percent_model=predict(lm(Win~Pass_Percent, data=nflstats)),percent_resid = residuals(lm(Win~Pass_Percent, data=nflstats)))
+
+ggplot(Percent.Data) +geom_point(aes(x = Win, y = percent_model),  color = "blue", alpha = .77, stroke = 0) + xlab("Actual Wins")+ylab("Predicted Wins") + geom_abline(intercept = 0,slope = 1, color = "black") + ggtitle("Predicted vs. Actual Wins (Passing Percentage Model)") + ylim(0,16)
+
+ggplot(Percent.Data) + geom_hline(yintercept = 0, color = "black")+geom_point(aes(x = Win, y = percent_resid), color = "red", alpha = .77, stroke = 0) + xlab("Wins")+ylab("Residual") + ggtitle("Residuals by Win (Passing Percentage Model)")
+```
+
+Since play-calling does not seem to have much effect on wins, my group wondered if passing and rushing stats were significantly different in predicting wins. Two separate functions were created to create linear models based on all the rushing stats and passing stats in our data set. Using the same process used for the Pass_Percentage model, the graphs seen below show the results of the predictions and the residuals on Wins using passing and rushing stats along with passing play percentage as models. The passing model has a RMSE of 2.03 while the rushing model has a RMSE of 2.4. The R squared value for the passing and rushing models respectively are .53 and .40. These models are better than the passing percentage model but there is not a significant difference between the two models as seen in the graphs below. 
+
+```{r, warning = F, echo = F}
+Compare.Data = nflstats %>% mutate(pass_model=predict(lm(Win~Comp + Att.y + Yds.y + Avg.y + Yds.G.y + TD.y + Int + QBR + Lng, data=nflstats)), rush_model=predict(lm(Win~Att.x + Yds.x + Avg.x + Yds.G.x + TD.x + Big + Fum + FumL + Stuff + Yds.1, data=nflstats)), percent_model=predict(lm(Win~Pass_Percent, data=nflstats)), pass_resid = residuals(lm(Win~Comp + Att.x + Yds.x + Avg.x + Yds.G.x + TD.x + Int + QBR + Lng, data=nflstats)), rush_resid = residuals(lm(Win~Att.y + Yds.y + Avg.y + Yds.G.y + TD.y + Big + Fum + FumL + Stuff + Yds.1, data=nflstats)), percent_resid = residuals(lm(Win~Pass_Percent, data=nflstats)))
+
+Compare.Data2 = Compare.Data %>% gather('pass_model', 'rush_model', 'percent_model', key = "Model", value = "Prediction", factor_key = T) %>% gather('pass_resid', 'rush_resid', 'percent_resid', key = "Resid_Model", value = "Residual")
+
+ggplot(Compare.Data2)+geom_point(aes(x = Win, y = Prediction, color = Model), alpha=0.25,stroke=0) + xlab("Actual Wins")+ylab("Predicted Wins") + geom_abline(intercept = 0,slope = 1, color = "black") + ggtitle("Predicted vs. Actual Wins by Model")  + ylim(0,16) + scale_color_discrete(name = "Model", labels = c("Passing",  "Rushing", "Play Percentage"))
+
+ggplot(Compare.Data2) + geom_hline(yintercept = 0, color = "black")+geom_point(aes(x = Win, y = Residual, color = Resid_Model), alpha=0.25,stroke=0) + xlab("Wins")+ylab("Residual") + ggtitle("Residuals per Win by Model") + scale_color_discrete(name = "Model", labels = c("Passing", "Play Percentage", "Rushing"))
+```
+
+#CONCLUSION
+In answering our question that asks which statistics do the highest tiered teams generally outperform the rest of the league, we first had to identify which variables the teams with 13 or more wins outperformed their competition. Unsurprisingly, teams that ranked in the highest tier consistently had more total offensive yards per season, more touchdowns per season, and fewer turnovers per season. This makes sense to all football fans since these are common metrics used to measure team success. It is interesting to note a slight trend in the tiered distribution for total yards per season. It appears all four tiers are improving over the time interval being measured, which is reflective of the type of game the NFL wants to put forward. Recent rule changes and new offensive schemes have been devised to produce high powered and high scoring offenses to produce a more exciting game for the fans. The NFL could look at a distribution such as these to see that their rule changes are having the desired effect. 
+
+Following this, we created a logistic regression model to predict whether a team would fall into the bottom tier (3 wins or less) or the highest tier (13 wins or more). In this model we utilized all cornerstone offensive statistics (yards, touchdowns, turnovers, etc.) to create the most comprehensive model we could given our data set. Given all 72 teams that fell into one of these two tiers over the 15 year period we were looking at, our model was able to accurately classify 71 teams. This high percentage of correct identification is a testament to the quality of our model. What happened with the team our model failed to correctly place in its tier? That team was the 2006 Chicago Bears team that went on to lose that year's Super Bowl. Upon further investigation using team stats from the 2006 season, we were able to identify potential sources of this error. Compared to other 13-plus win teams from 2006, the Bears had a low total touchdown number and a high turnover number. This combination is typically not a recipe for a team that reaches the Super Bowl, so what made the Bears different? Further research uncovered that the Bears had the NFL's third easiest schedule that season based on their opponents' win percentages. Not only were they faced with a weak schedule, but the Bears boasted one of the NFL's most formidable defenses that seasons. Long time NFL fans will remember this defense featured the likes of Brian Urlacher, Lance Briggs, and Charles Tillman, who were all in the primes of their careers. The combination of a weak schedule with a dominant defense allowed the Bears to win 13 games without the high-powered offense that is typical of the highest tiered teams in the NFL. Fans and sports bettors may find this information useful. Bettors can identify teams with weak schedules and exceptional defenses that have long odds to make the playoffs to place bets in the future. Further investigation is required to see just how weak a schedule must be or just how good a defense must be for a team to have a strong chance to overcome their lackluster offensive performance. 
+
+Our second question was much less revealing about the current state of the NFL. Our second question examined the differences in success, measured by wins, of teams that we classified as run-heavy, pass-heavy, or balanced. For those who are not entrenched football fans, this is referring to the breakdown of their offensive play calling. Teams were classified as "balanced" if they passed the ball between 50% and 55% of their offensive snaps. If the range went down to 45%, this would have depleted the sample size for teams who we could classify as "run-heavy." This is a reflection of a general trend in the NFL over the past several decades as the style of play has been growing more and more pass-centric. Though today's most successful teams often boast high-powered offenses run by Hall-of-Fame-caliber quarterbacks, our comparison model found there was no significant difference in success for teams based on offensive play calling strategies. Teams that are run-heavy are often labeled as "old school" and thought of as being slow and less exciting than their gun-slinging counterparts, but here we found that this group had the highest mean number of wins per season. It is surprising to see that run-heavy teams see similar success than pass-heavy teams, especially when you consider how the NFL has made rule changes to encourage teams to pass the ball. This just shows us that teams will play to their strengths regardless of how the game or rules have evolved. To further explore whether or not play style was correlated to the number of games a team wins we created models using pass completion percentage, passing success, and rushing success. Completion percentage proved to be an ineffective predictor of a team's wins. From here, we decided to take a look at passing and rushing stats as a whole to see which is a better predictor of a team's wins. Again, neither model proved to be particularly strong, as the predictions from the passing and rushing statistics gave similar win totals. This may come as a surprise for football fans, as successful teams often have a good quarterback and play in an offensive scheme that spreads the ball around. Follow up research on how teams distribute the ball would reveal more about how the number of skill players who are regularly involved in an team's offensive game plan impacts success. This information was not contained within our data set, but would be helpful to fantasy football players who look for every advantage when deciding which players to draft before each season. 
+
+Overall, our attempt to answer these questions revealed just how important offensive production is in today's NFL. Offensive excellence was a key feature for 71 out of the 72 teams in our data set that had 13 or more wins. While defense may win championships, it appears offensive production wins games. In the future, researchers could build off of this model to identify the offensive statistics that have the strongest correlation to the number of games a team wins. They may even be able to identify minimum thresholds in each statistic to create parameters that must be met to believe a team will reach 13 wins. This additional research that answers these questions would be even more helpful to sports bettors, who would utilize these statistical thresholds to identify teams that are likely to make the playoffs. We also uncovered the lack of variation in predicted wins given a team's offensive play calling. Though it is clear to see that the NFL has transitioned to more of a pass-heavy league, there was not a lot of variation in teams' wins when they were divided based on their play calling. Perhaps in the future, these teams could be divided further based on the type of pass plays they call rather than simply the number of pass plays. For instance, teams could be divided based on the average depth of the the pass for each of their pass plays. This could then be used to predict a team's wins and help determine whether the risk of attempting deeper passes is worth it. This sort of information was not included in our data set, but would be value to football coaches and administrators as they decide what coaches to hire given their offensive strategies. This would build off our study to give coaches a better and more analytical point of view of offensive play calling in the NFL. 
+
+

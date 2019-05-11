@@ -1,0 +1,156 @@
+---
+title: "Group 15 NFL Play Calling Analysis"
+author: |
+  | Sam Carson
+  | Hunter Finger
+  | Jack Robinson
+  | Haley Talton
+runtime: shiny
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+#Put Necessary Libraries Here
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggthemes)
+library(plotly)
+library(ggplot2)
+library(tidyverse)
+library(modelr)
+library(broom)
+library(glmnet)
+library(kableExtra)
+library(scales)
+
+pass <- read.csv("NFL.csv")
+bears=read.csv("bears.csv")
+rush <- read.csv("NFLRUSH.csv")
+rush = rush %>% rename('Ratt' = 'Att', 'RYds' = 'Yds', 'RYds.G' = 'Yds.G', 'Lost' = 'Yds.1', 'Rush_TD' = 'TD', 'RAvg' = 'Avg')
+nflstats = merge(rush, pass, by =c("YEAR", "Team", "GP"))
+playcall_type = select(nflstats, YEAR, Team, Ratt, Att, Win)
+
+
+BalancedTeam <- filter(playcall_type, Att/(Ratt+Att) <= .55 & Att/(Ratt+Att) >= .5) %>% transform("Play_Type" = "Balanced", "Pass_Percent" = Att/(Ratt+Att))
+UnbalancedRun <- filter(playcall_type, Att/(Ratt+Att) < .5) %>% transform("Play_Type" = "Run-Heavy", "Pass_Percent" = Ratt/(Ratt+Att))
+UnbalancedPass <- filter(playcall_type, Att/(Ratt+Att) > .55) %>% transform("Play_Type" = "Pass-Heavy", "Pass_Percent" = Ratt/(Ratt+Att))
+playcall_type2 = full_join(BalancedTeam, UnbalancedRun) %>% full_join(UnbalancedPass)
+nflstats = left_join(nflstats, playcall_type2)
+```
+
+## The Question
+
+  * How does play calling affect the win total for NFL teams?
+    * Do teams who run or pass more have better success? 
+    * Can we use passing and rushing statistics to accurately predict a team's win total?
+
+## The Data
+
+  * NFL yearly passing and rushing statistics
+  * Found on Kaggle [https://www.kaggle.com/farmander/nfl-statistics#NFL%20Team%20Season%20Stats%20-%20Passing.csv/](https://www.kaggle.com/farmander/nfl-statistics#NFL%20Team%20Season%20Stats%20-%20Passing.csv/)
+  * Verified data using [https://www.pro-football-reference.com/](https://www.pro-football-reference.com/)
+```{r, echo = F, eval = T}
+nflstats[1:5,]
+```
+
+## Results
+
+  * Do NFL teams who run or pass more have better success? 
+  
+```{r, echo = F, warning = F, eval = T}
+ggplot(nflstats) + geom_boxplot(aes(x=Play_Type, y = Win), fill = "#624a2e", color = "white") + xlab("Play Style")+ ylab("Wins") + ggtitle("Play Style vs. Wins in the NFL") + theme(
+  panel.background = element_rect(fill = "#458B00", colour = "white",
+                                size = 2, linetype = "solid"),
+  panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                colour = "black"), 
+  panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                colour = "black")
+  )
+```
+
+## Results
+
+  * Do NFL teams who run or pass more have better success? 
+  
+```{r, echo = F, warning = F}
+Percent.Data = nflstats %>% mutate(percent_model=predict(lm(Win~Pass_Percent, data=nflstats)),percent_resid = residuals(lm(Win~Pass_Percent, data=nflstats)))
+
+ggplot(Percent.Data) + geom_point(aes(x = Win, y = percent_model),  color = "blue", alpha = .77, stroke = 0) + xlab("Actual Wins")+ylab("Predicted Wins") + geom_abline(intercept = 0,slope = 1, color = "black") + ggtitle("Predicted vs. Actual Wins (Passing Percentage Model)") + ylim(0,16)
+```
+
+## Results
+
+  * Do NFL teams who run or pass more have better success? 
+  
+```{r, echo = F, warning = F}
+ggplot(Percent.Data) + geom_hline(yintercept = 0, color = "black")+geom_point(aes(x = Win, y = percent_resid), color = "red", alpha = .77, stroke = 0) + xlab("Wins")+ylab("Residual") + ggtitle("Residuals by Win (Passing Percentage Model)")
+```
+
+## Results
+
+  * Do rushing or passing stats accurately predict a team's win total?
+  
+```{r, warning = F, echo = F, eval = T}
+set.seed(77)
+
+Data = nflstats %>% crossv_kfold(8)
+
+RMSE.func = function(actual, predict){
+  mse = mean((actual - predict)^2, na.rm = T)
+  rmse = sqrt(mse)
+  return(rmse)
+}
+
+train.percentmodel.func = function(data){
+  percentmod = lm(Win~Pass_Percent, data = data)
+  return(percentmod)
+}
+
+train.passmodel.func=function(data){
+  passmod=lm(Win~Comp + Att + Yds + Avg + Yds.G + TD + Int + QBR + Lng + Pass_Percent, data=data)
+  return(passmod)
+}
+
+train.rushmodel.func=function(data){
+  rushmod=lm(Win~Ratt + RYds + RAvg + RYds.G + Ratt + Big + Fum + FumL + Stuff  + Lost + Pass_Percent, data=data)
+  return(rushmod)
+}
+
+
+Data4 = Data %>% mutate(tr.model=map(train, train.percentmodel.func)) 
+Percent_Data = Data4 %>% mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>% select(predict) %>% unnest()
+PERCENT_OUT.RMSE = RMSE.func(actual = Percent_Data$Win, predict = Percent_Data$.fitted);
+
+Data2 = Data %>% mutate(tr.model=map(train, train.passmodel.func)) 
+Pass_Data = Data2 %>% mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>% select(predict) %>% unnest()
+PASS_OUT.RMSE = RMSE.func(actual = Pass_Data$Win, predict = Pass_Data$.fitted);
+
+
+
+Data3 = Data %>% mutate(tr.model=map(train, train.rushmodel.func)) 
+Rush_Data = Data3 %>% mutate(predict=map2(test,tr.model,~augment(.y,newdata=.x))) %>% select(predict) %>% unnest()
+RUSH_OUT.RMSE = RMSE.func(actual = Rush_Data$Win, predict = Rush_Data$.fitted);
+```
+
+```{r, warning = F, echo = F, eval = T}
+Compare.Data = nflstats %>% mutate(pass_model=predict(lm(Win~Comp + Att + Yds + Avg + Yds.G + TD + Int + QBR + Lng, data=nflstats)), rush_model=predict(lm(Win~Ratt + RYds + RAvg + RYds.G + Rush_TD + Big + Fum + FumL + Stuff + Lost, data=nflstats)), percent_model=predict(lm(Win~Pass_Percent, data=nflstats)), pass_resid = residuals(lm(Win~Comp + Att + Yds + Avg + Yds.G + TD + Int + QBR + Lng, data=nflstats)), rush_resid = residuals(lm(Win~Ratt + RYds + RAvg + RYds.G + Rush_TD + Big + Fum + FumL + Stuff + Lost, data=nflstats)), percent_resid = residuals(lm(Win~Pass_Percent, data=nflstats)))
+
+Compare.Data2 = Compare.Data %>% gather('pass_model', 'rush_model', 'percent_model', key = "Model", value = "Prediction", factor_key = T) %>% gather('pass_resid', 'rush_resid', 'percent_resid', key = "Resid_Model", value = "Residual")
+
+ggplot(Compare.Data2)+geom_point(aes(x = Win, y = Prediction, color = Model), alpha=0.25,stroke=0) + xlab("Actual Wins")+ylab("Predicted Wins") + geom_abline(intercept = 0,slope = 1, color = "black") + ggtitle("Predicted vs. Actual Wins by Model")  + ylim(0,16) + scale_color_discrete(name = "Model", labels = c("Passing",  "Rushing", "Pass Percentage"))
+```
+
+## Results
+
+  * Do rushing or passing stats accurately predict a team's win total?
+  
+```{r, echo = F, warning = F}
+ggplot(Compare.Data2) + geom_hline(yintercept = 0, color = "black")+geom_point(aes(x = Win, y = Residual, color = Resid_Model), alpha=0.25,stroke=0) + xlab("Wins")+ylab("Residual") + ggtitle("Residuals per Win by Model") + scale_color_discrete(name = "Model", labels = c("Passing", "Pass Percentage", "Rushing"))
+```
+
+## Questions?
+
+

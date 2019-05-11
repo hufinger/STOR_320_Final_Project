@@ -1,0 +1,338 @@
+---
+title: "Exploratory Data Analysis"
+author: "STOR 320.01 Group 15"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggthemes)
+library(plotly)
+library(ggplot2)
+library(tidyverse)
+library(modelr)
+library(broom)
+library(glmnet)
+
+# Import Data Below
+pass <- read_csv("NFL.csv")
+rush <- read_csv("NFLRUSH.csv")
+nflstats = merge(rush, pass, by =c("YEAR", "Team"))
+Idvl_Stats = read.csv("QBStats_all.csv")
+```
+
+#Creator: Jack Robinson
+
+###Q1: What is the effect of a team's rushing success on their quarterback's quarterback rating?
+
+```{r}
+ravg = ggplot(nflstats, mapping = aes(x = Avg.x, y = QBR)) + geom_point() + geom_smooth(method = 'lm') +xlab("Rushing Yards Per Attempt") 
+ravg
+
+nflstats %>%
+  ggplot(mapping = aes(x = `Yds.x`, y = QBR)) + geom_point() + geom_smooth(method = 'lm', color= "orange") + xlab("Rushing Yards per Game")
+
+nflstats %>%
+  ggplot(mapping = aes(x = TD.x, y = QBR)) + geom_point() + geom_smooth(method = 'lm', color= "red") + xlab("Rushing Touchdowns") 
+
+nflstats %>%
+  mutate(touchdownrate = TD.x / Att.x) %>%
+  ggplot(mapping = aes(x = touchdownrate, y = QBR)) + geom_point() + geom_smooth(method = 'lm', color= "green") + xlab("Rushing Touchdown Rate")
+```
+
+###Q2: Which is more detrimental to a team: interceptions or fumbles lost?
+
+```{r}
+nflstats %>%
+  ggplot(mapping = aes(x = FumL, y = Loss)) + geom_point() + geom_smooth(method = 'lm', color= "orange")
+  
+nflstats %>%
+  ggplot(mapping = aes(x = Int, y = Loss)) + geom_point() + geom_smooth(method = 'lm', color = "blue")
+```
+
+#Interpreter: Haley Talton
+
+###Q1: How does playing at home versus playing away effect a quarterback's stats?
+
+```{r}
+Home <- filter(Idvl_Stats, home_away == "home")
+
+summary(select(Home, yds, ypa, rate))
+
+
+Away <- filter(Idvl_Stats, home_away == "away")
+
+summary(select(Away, yds, ypa, rate))
+ggplot(Idvl_Stats) + geom_boxplot(aes(x = home_away, y = yds))
+
+ggplot(Idvl_Stats) + geom_boxplot(aes(x = home_away, y = ypa))
+
+ggplot(Idvl_Stats) + geom_boxplot(aes(x = home_away, y = rate))
+
+ggplot(Idvl_Stats, aes(x = home_away, y = td, color = home_away)) + 
+  geom_bar(stat = "identity")
+
+ggplot(Idvl_Stats, aes(x = home_away, y = int, color = home_away)) + 
+  geom_bar(stat = "identity")
+```
+
+###Q2: Is there a correlation between passing yards and points scored?
+
+```{r}
+model = lm(TD~Yds, data = pass)
+tidy(model)
+ggplot(pass) +
+  geom_point(aes(x=Yds, y=TD)) +
+  geom_smooth(aes(x = Yds, y = TD), method = "lm")
+```
+
+#Orator: Hunter Finger
+
+###Q1: Is rushing or passing effeciency more predictive of team success?
+
+```{r}
+RushYPG_W <- select(rush, Team, YEAR, Avg, Yds.G, Win) %>% rename('Year' = 'YEAR')
+PassYPG_W <- select(pass, Team, YEAR, Avg, Yds.G, Win) %>% rename('Year' = 'YEAR')
+ggplot(RushYPG_W, mapping = aes(x = Win, y = Avg)) + geom_point() + geom_smooth()
+ggplot(RushYPG_W, mapping = aes(x = Win, y = Yds.G)) + geom_point() + geom_smooth()
+ggplot(PassYPG_W, mapping = aes(x = Win, y = Avg)) + geom_point() + geom_smooth()
+ggplot(PassYPG_W, mapping = aes(x = Win, y = Yds.G)) + geom_point() + geom_smooth()
+```
+
+###Q2: Looking at the league as a whole, how has the passing game changed since the 1996?
+
+```{r}
+YdsPY <- aggregate(Idvl_Stats$yds, by=list(Year=Idvl_Stats$year), FUN=sum) %>%  rename('Total_Passing_Yards' = 'x')
+
+YdsPG <- aggregate(pass$Yds.G, by=list(Year = pass$YEAR), FUN = mean) %>% rename('Average_Yards_Per_Game' = 'x')
+
+AttPY <- aggregate(Idvl_Stats$att, by=list(Year=Idvl_Stats$year), FUN=sum) %>% rename('Total_Passing_Attempts' = 'x')
+
+ggplot(YdsPY, mapping= aes(x = Year, y = Total_Passing_Yards)) + geom_line(color = "green") + geom_point()
+
+ggplot(YdsPG, mapping = aes(x = Year, y = Average_Yards_Per_Game)) + geom_line(color = "green") + geom_point()
+
+ggplot(AttPY, mapping = aes(x = Year, y = Total_Passing_Attempts)) + geom_line(color = "green") + geom_point()
+```
+
+#Deliverer: Samuel Carson
+
+###Q1: Do teams with a winning record have better quarterback play than teams with a losing record?
+
+```{r}
+g <- ggplot(pass, aes(Win, QBR))
+g + geom_point() + 
+  geom_smooth(method="lm", se=F) +
+  labs(subtitle="Wins vs QBR", 
+       y="QBR", 
+       x="Wins", 
+       title="Comparing QBR to Wins")
+
+graph <- ggplot(pass, aes(QBR, Win)) + 
+  labs(subtitle="",
+       title="Wins vs QBR (2002-2017)",
+       xlab="Wins")
+graph + geom_jitter(aes(col=Yds, size=TD)) + 
+  geom_smooth(aes(col=Yds), method="lm", se=F)
+
+pass$TD_to_Int<-(pass$TD/pass$Int)
+pass$Completion_Percetage=pass$Pct*100
+graph <- ggplot(pass, aes(TD, Win)) + 
+  labs(subtitle="",
+       title="Wins Compared to Touchdowns thrown (2002-2017)",
+       ylab="Wins")
+
+graph + geom_jitter(aes(col=Completion_Percetage, size=TD_to_Int)) + 
+  geom_smooth(aes(col=Completion_Percetage), method="lm", se=F)
+```
+
+###Q2: Does division have an effect on quarterback play? 
+
+```{r}
+pass["Years"] <- cut(pass$YEAR, breaks=c(2000,2005,2009,2013,2018), labels=c("2002-2005", "2006-2009", "2010-2013", "2014-2017"))
+rush["Years"] <- cut(rush$YEAR, breaks=c(2000,2005,2009,2013,2018), labels=c("2002-2005", "2006-2009", "2010-2013", "2014-2017"))
+nflstats["Years"] <- cut(nflstats$YEAR, breaks=c(2000,2005,2009,2013,2018), labels=c("2002-2005", "2006-2009", "2010-2013", "2014-2017"))
+g <- ggplot(pass, aes(factor(Years), Yds))
+g + geom_boxplot(aes(fill=factor(Division))) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Yards per Season vs Team Wins",
+       subtitle="2002-2017",
+       x="Year",
+       y="Yards per Season",
+       fill="Division")
+       
+g <- ggplot(pass, aes(factor(Years), QBR))
+g + geom_boxplot(aes(fill=factor(Division))) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="QBR vs Team Wins",
+       subtitle="2002-2017",
+       x="Year",
+       y="QBR",
+       fill="Division")
+       
+p <- ggplot(pass, aes(x = YEAR, y = QBR,fill = Division)) + ggtitle("Total QBR by Division (2002-2017)")
+p <- p + geom_bar(stat = "identity", position = "stack")
+
+p
+```
+
+# Follow-up Questions
+
+### New Questions Based Off Initial Investigation
+
+- Q1: Divide teams into 4 tiers, in which stats are teams in the fourth tier much better than the rest of the league, and is it possible to predict if a team will be top or bottom tier?
+- Q2: Looking at rushing and passing balance, do balanced teams win more than rush or pass-heavy teams? 
+- Q3: Is there a correlation between passing yards and points scored? PYds, TD 
+- Q4: Are some teams significantly better than others when at home? Are there teams that perform better when on the road than when at home?
+
+### Investigation of Follow-up Questions
+
+Our group decided to investigate Q1 and Q2 in further detail.
+
+
+#Divide teams into 4 tiers, in which stats are teams in the fourth tier much better than the rest of the league, and is it possible to predict if a team will be top or bottom tier?
+```{r}
+pass["Category"] <- cut(pass$Win, breaks=c(-1,3,9,12,100), labels=c("3 wins or less", "4 to 8 wins", "9 to 12 wins", "13 to 16 wins"))
+rush["Category"] <- cut(rush$Win, breaks=c(-1,3,9,12,100), labels=c("3 wins or less", "4 to 8 wins", "9 to 12 wins", "13 to 16 wins")) 
+nflstats["Category"] <- cut(nflstats$Win.x, breaks=c(-1,3,9,12,100), labels=c("3 wins or less", "4 to 8 wins", "9 to 12 wins", "13 to 16 wins"))
+
+
+nflstats["Total_TDs"]<-nflstats$TD.x+nflstats$TD.y
+nflstats["Turnovers"]<- nflstats$Int+nflstats$FumL
+
+g <- ggplot(pass, aes(factor(Years), Yds))
+g + geom_boxplot(aes(fill=factor(Category))) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Passing Yards per Season vs Team Wins",
+       subtitle="2002-2017",
+       x="Year",
+       y="Yards per Season",
+       fill="Win Category")
+
+       
+g <- ggplot(rush, aes(factor(Years), Yds))
+g + geom_boxplot(aes(fill=factor(Category))) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Rushing Yards per Season vs Team Wins",
+       subtitle="2002-2017",
+       x="Year",
+       y="Rushing Yards per Season",
+       fill="Win Category")
+
+       
+g <- ggplot(nflstats, aes(factor(Years), Turnovers))
+g + geom_boxplot(aes(fill=factor(Category))) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Amount of Turnovers by Number of Wins",
+       subtitle="2002-2017",
+       x="Year",
+       y="Turnovers",
+       fill="Win Category")
+
+g <- ggplot(nflstats, aes(factor(Years), Total_TDs))
+g + geom_boxplot(aes(fill=factor(Category))) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Amount of Touchdowns by Number of Wins",
+       subtitle="2002-2017",
+       x="Year",
+       y="Touchdowns",
+       fill="Win Category")
+#logistic regression
+nflstats2<-filter(nflstats, Win.y <= 3 | Win.y>=13)
+nflstats2$Category2<- ifelse(nflstats2$Category == "13 to 16 wins",1,0)
+nflstats3<-select(nflstats2, Att.x,Yds.x,TD.x,Big,Fum,FumL,Stuff,Yds_1,Comp,Att.y,Pct,Yds.y,TD.y	,Int,QBR,Lng, Category2)
+nfl=nflstats3
+set.seed(216)
+cvmod.0=cv.glmnet(y=as.factor(nfl$Category2),x=as.matrix(nfl[,-1]),alpha=0,
+                  family="binomial",type.measure="class")
+set.seed(216)
+cvmod.25=cv.glmnet(y=as.factor(nfl$Category2),x=as.matrix(nfl[,-1]),alpha=0.25,
+                   family="binomial",type.measure="class")
+set.seed(216)
+cvmod.5=cv.glmnet(y=as.factor(nfl$Category2),x=as.matrix(nfl[,-1]),alpha=0.5,
+                  family="binomial",type.measure="class")
+set.seed(216)
+cvmod.75=cv.glmnet(y=as.factor(nfl$Category2),x=as.matrix(nfl[,-1]),alpha=0.75,
+                   family="binomial",type.measure="class")
+set.seed(216)
+cvmod.1=cv.glmnet(y=as.factor(nfl$Category2),x=as.matrix(nfl[,-1]),alpha=1,
+                  family="binomial",type.measure="class")
+
+CV.0.ERROR=cvmod.0$cvm[which(cvmod.0$lambda==cvmod.0$lambda.1se)]
+CV.25.ERROR=cvmod.25$cvm[which(cvmod.25$lambda==cvmod.25$lambda.1se)]
+CV.5.ERROR=cvmod.5$cvm[which(cvmod.5$lambda==cvmod.5$lambda.1se)]
+CV.75.ERROR=cvmod.75$cvm[which(cvmod.75$lambda==cvmod.75$lambda.1se)]
+CV.1.ERROR=cvmod.1$cvm[which(cvmod.1$lambda==cvmod.1$lambda.1se)]
+
+MOD.RESULT=tibble(alpha=c(0,0.25,0.5,0.75,1),
+                  lambda=c(cvmod.0$lambda.1se,cvmod.25$lambda.1se,
+                           cvmod.5$lambda.1se,cvmod.75$lambda.1se,
+                           cvmod.1$lambda.1se),
+                  CV.Error=c(CV.0.ERROR,CV.25.ERROR,CV.5.ERROR,
+                             CV.75.ERROR,CV.1.ERROR))
+print(MOD.RESULT)
+best.alpha=MOD.RESULT$alpha[which.min(MOD.RESULT$CV.Error)]
+best.lambda=MOD.RESULT$lambda[which.min(MOD.RESULT$CV.Error)]
+
+best.mod=glmnet(y=as.factor(nfl$Category2),x=as.matrix(nfl[,-1]),
+                nlambda=1,lambda=best.lambda,alpha=best.alpha,
+                family="binomial")
+best.coef=as.matrix(coef(best.mod))
+head(best.coef)
+
+nfl$Predict=predict(best.mod,newx=as.matrix(nfl[,-1]),type="class")
+nfl$Category2=ifelse(nfl$Category2==1,"Yes","No")
+nfl$Predict=ifelse(nfl$Predict=="1","Yes","No")
+
+table(nfl[,c("Category2","Predict")])
+```
+#Looking at rushing and passing balance, do balanced teams win more than rush or pass-heavy teams? 
+```{r}
+TEST.WINS = sample(x = unique(nflstats$Team), size = 10, replace = F)
+
+TRAIN = anti_join(nflstats,tibble(Team=TEST.WINS),by="Team")
+TEST = semi_join(nflstats,tibble(Team=TEST.WINS),by="Team")
+
+pass_linmod = lm(Win.x~Att.y, data = TRAIN)
+summary(pass_linmod)
+rush_linmod = lm(Win.x~Att.x, data = TRAIN)
+summary(rush_linmod)
+
+TRAIN2 =  TRAIN %>% add_predictions(pass_linmod,var="pass_linpred") %>% add_predictions(rush_linmod,var="rush_linpred") %>% add_residuals(pass_linmod,var="pass_linres") %>% add_residuals(rush_linmod,var="rush_linres")
+TEST2 = TEST %>% add_predictions(pass_linmod,var="pass_linpred") %>% add_predictions(rush_linmod,var="rush_linpred")  %>% add_residuals(pass_linmod,var="pass_linres") %>% add_residuals(rush_linmod,var="rush_linres")
+
+resid_plot = gather_residuals(TRAIN, pass_linmod, rush_linmod)
+ggplot(resid_plot, aes(x = resid, color = model)) + geom_freqpoly(binwidth = .25)
+
+SUMMARY4 <- select(TRAIN2, YEAR, Team, Att.y, Att.x, Win.x, pass_linpred, rush_linpred, pass_linres, rush_linres)
+SUM5 <- SUMMARY4 %>% gather(pass_linpred:rush_linpred,key="Model",value="Pred",factor_key=T) 
+ggplot() + geom_point(SUM5, mapping = aes(x=Win.x,y=Pred,color=Model)) + theme_minimal()
+
+BalanceTeam <- filter(SUMMARY4, Att.x - Att.y < 100 & Att.y-Att.x < 100)
+AvWinBT <- mean(BalanceTeam$Win)
+head(AvWinBT)
+UnbalancedRun <- filter(SUMMARY4, Att.x - Att.y > 100)
+AvWinUR <- mean(UnbalancedRun$Win)
+head(AvWinUR)
+UnbalancedPass <- filter(SUMMARY4, Att.y-Att.x > 100)
+AvWinUP <- mean(UnbalancedPass$Win)
+head(AvWinUP)
+```
+
+#Summary
+
+Our data focuses primarily on seasonal offensive stats for each NFL team from 2002 to 2017. Throughout the last 30 years, the NFL has transitioned to a more pass-heavy offensive approach. Given this trend, it was very interesting to see that passing yards per game experienced a steep decline in 2017. We suspect that this is a result of an exceptionally high number of games played by backup quarterbacks that year. Many of our initial questions focused on what statistics were the best predictors of wins or excellence in other statistics. We compared the costliness of both fumbles lost and interceptions. Based on this data set, it appears that not all turnovers are created equal as interceptions have a much stronger correlation to number of losses than fumbles lost. This may be a result of a higher quantity of interceptions than fumbles lost, or because players who intercept the ball have a better chance to return the ball for positive yardage than players who have recovered a fumble. We looked at what statistics have the strongest impact on quarterback rating (QBR). We were surprised to find that rushing efficiency (rush yards per attempt and rush yards per game) was not a strong predictor of QBR. Instead, rushing touchdown rate (rushing touchdowns per rushing attempt) was the strongest predictor of a quarterback's play. It was not surprising to see that there was a strong correlation between wins and QBR. The strongest relationship between a statistic and wins came from pass yards per attempt.This indicates that teams that push the ball down field and more likely to win the game, perhaps because these teams often score more points. Our follow up questions seek to big deeper into statistical trends as a whole across the league. We will be looking deeper into the relationship between interceptions and team success by comparing the differences in distribution of interceptions for teams based on if they have a winning or losing record. Other follow questions will look at which statistic teams that had winning seasons excelled at to see which statistical categories can be considered the best predictors of success. Another question will further explore the correlation between both rushing and passing efficiency and team wins. Through this second round of exploration we are hoping to identify which statistical categories winning teams separate themselves from the field in to identify strong predictors of success.
+
+In one of our questions we divided teams into four tiers based on the number of wins they had each season. We then compared the distributions of these four tiers over several different statistical categories to determine if there were any where the highest tiered teams (those with 13+ wins in a season) consistently ranked higher than teams with fewer wins. Looking at the last 15 years, the highest tiered teams have consistently separated themselves in total passing yards. Interestingly, there were no teams with 13+ or more wins in 2014 so this may have skewed the data for 2014-2017. The same relationship cannot be found in the graphs plotting wins based on total rushing yards per season. In only 2 of the last 10 seasons have 13+ win teams separated themselves from the field in rushing yards. This dynamic is not surprising, as the league has become much more pass-heavy, as teams that win many games often feature high-powered offenses and star quarterbacks. It is also not shocking to find that teams with 3 wins or fewer have consistently had more turnovers that teams with winning records. We showed in our initial graphs that both fumbles lost and interceptions have a positive correlation with losses, so this supports that relationship. The final two graphs for this question may dispel the myth that, "Defense wins championships." While we aren't looking at playoff success for teams, we can safely say that offense wins regular season games. Looking at these tiers over the past 15 seasons, teams with 13+ wins have had noticeably more touchdowns than the field in 8 seasons. Defense may win championships, but total offensive touchdowns has a much stronger correlation to games won during the regular season. Next, we made a logistic regression to see if we can predict if a team will win 3 games or less, or 13 or more. The most impactful regressors that we found include rushing yards, and rushing touchdowns. The logistic regression is fully accurate at predicting at placing our data in the two win Categories. This accuracy is likely due to the relatively small amount of occurrences for these two scenarios.  Its accuracy is also due to the drastic change in stats the two categories of teams consistently have, making it easier for a logistic regression to get its predictions correct.  Our next question looked at the record of teams sorted into three categories: balanced, pass-heavy, and run-heavy. Thinking about how the NFL has changed over recent decades and what we've uncovered in our previous models, one would initially assume pass-heavy teams would win more. Shockingly, this was not the case at all. Rushing attempts proved to be a much better predictor of a team's success. Teams that were classified as run-heavy averaged over 10 wins a season while balanced teams averaged about 9 wins and pass-heavy teams averaged a little over 7 wins. We also found that a team's rushing attempts are a much stronger predictor of a team's wins than passing attempts. This reinforces the importance of having a strong rushing attack in today's NFL despite its transition to more a pass-oriented offensive attack. To compare the accuracy of both the rushing and passing models, we looked at the residuals of each. The residuals for the rushing model were much smaller than those for the passing model, which reinforces our findings that rushing statistics, namely rushing attempts, is a strong predictor of team success and confirms that accuracy and validity of this model.  Another question we posed examined the differences in interceptions thrown by teams with a winning record and those thrown by teams with a losing record. One would assume that teams with a losing record are much more likely to throw more interceptions given the strong correlation of interceptions to losses found in our initial round of questions, but that is not the case. Teams with losing records actually averaged fewer interceptions than teams with winning records. This could be a reflection of more aggressive play calling from teams with winning records leading to more interceptions while still having the offensive firepower to overcome their mistakes. Though the data from this sample showed a slight difference, a t-test at a significance level of 0.1 revealed the differences were not statistically significant. Examining data from a larger data set would be required to further explore this relationship.
+
+
+
+
+
+
+
+
+
